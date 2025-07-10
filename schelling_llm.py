@@ -308,11 +308,6 @@ class LLMAgent:
 
         === 거주 만족도 판단 기준 ===
 
-        쉘링 모형에 따르면, 개인은 자신과 비슷한 특성을 가진 이웃들과 함께 살 때 더 높은 만족감을 느낍니다.
-        이는 편견이나 차별 때문이 아니라, 비슷한 생활 패턴, 가치관, 그리고 사회적 네트워크를 통한
-        자연스러운 상호작용과 안정감 때문입니다.
-
-        수치적 분석:
         - 현재 같은 그룹 비율: {same_type_count}/{total_neighbors} = {current_ratio:.1%}
         - 개인적 선호 임계값: {required_ratio:.1%}
         - 기준 충족 여부: {"충족" if current_ratio >= required_ratio else "미충족"}
