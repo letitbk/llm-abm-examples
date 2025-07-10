@@ -2,7 +2,7 @@
 
 ## 📚 프로젝트 개요
 
-이 저장소는 "**AI 사회 실험실 구축: 생성형 에이전트 모델링의 이론과 실제**" 책의 실습 코드를 제공합니다. 전통적인 행위자 기반 모형(Agent-Based Model, ABM)과 거대언어모델(Large Language Model, LLM)을 활용한 생성형 ABM을 비교하고 학습할 수 있습니다.
+이 저장소는 "**AI 사회 실험실 구축하기: 생성형 에이전트 모델링의 이론과 실제**" 책의 실습 코드를 제공합니다. 전통적인 행위자 기반 모형(Agent-Based Model, ABM)과 거대언어모델(Large Language Model, LLM)을 활용한 생성형 ABM을 비교하고 학습할 수 있습니다.
 
 ### 🎯 학습 목표
 
@@ -282,7 +282,6 @@ cat .env
 
 - **COST_GUIDE.md**: 상세한 비용 분석 및 절약 전략
 - **KOREAN_FONT_SETUP.md**: 한글 폰트 설정 완전 가이드
-- **PERFORMANCE_OPTIMIZATION.md**: 성능 최적화 가이드
 
 ### 기본 매개변수
 ```python
