@@ -106,34 +106,37 @@ class LLMAgent:
         self.type_name = "A" if agent_type == 1 else "B"
         self.satisfaction_history = []
 
-        # 집단별 특성 정의
+        # 집단별 특성 정의 (쉘링 모형의 사회적 맥락 반영)
         if self.type_name == "A":
             self.group_characteristics = {
-                "name": "그룹 A",
+                "name": "그룹 A (사회적 집단)",
                 "traits": [
-                    "전통적 가치관을 중시하는 보수적 성향",
-                    "안정적인 환경을 선호함",
-                    "같은 문화적 배경을 가진 사람들과의 유대감을 중요시함",
-                    "변화에 대해 신중한 태도를 보임"
-                ]
+                    "비슷한 사회경제적 배경을 가진 사람들과의 근접성을 선호",
+                    "안전하고 예측 가능한 거주 환경을 중요시",
+                    "자녀 교육과 지역 공동체 참여를 우선시",
+                    "장기적 거주 안정성과 자산 가치 보존을 고려"
+                ],
+                "preferences": "비슷한 생활 패턴과 가치관을 가진 이웃들과 함께 살며 공동체 결속을 통한 안정감을 추구"
             }
         else:
             self.group_characteristics = {
-                "name": "그룹 B",
+                "name": "그룹 B (사회적 집단)",
                 "traits": [
-                    "진보적이고 개방적인 성향",
-                    "다양성을 추구하고 새로운 경험을 환영함",
-                    "혁신과 변화를 긍정적으로 받아들임",
-                    "개인의 자유와 독립성을 중시함"
-                ]
+                    "다양한 문화적 배경을 가진 사람들과의 상호작용을 선호",
+                    "창의적이고 역동적인 거주 환경을 추구",
+                    "개인의 자율성과 생활 방식의 다양성을 중시",
+                    "새로운 기회와 경험에 대한 개방적 태도"
+                ],
+                "preferences": "다양성이 있는 환경에서 새로운 아이디어와 경험을 통해 개인적 성장을 추구"
             }
 
-    def get_neighborhood_info(self, grid: np.ndarray) -> Dict:
+    def get_neighborhood_info(self, grid: np.ndarray, observation_radius: int = 2) -> Dict:
         """
         주변 환경 정보를 수집합니다.
 
         Args:
             grid: 현재 격자 상태
+            observation_radius: 관찰 반경 (기본값: 2, 즉 5x5 영역)
 
         Returns:
             Dict: 이웃 정보와 격자 시각화
@@ -141,10 +144,10 @@ class LLMAgent:
         neighbors = {"A": 0, "B": 0, "empty": 0}
         neighborhood_grid = []
 
-        # 5x5 영역 관찰
-        for dx in range(-2, 3):
+        # 유연한 크기의 영역 관찰
+        for dx in range(-observation_radius, observation_radius + 1):
             row = []
-            for dy in range(-2, 3):
+            for dy in range(-observation_radius, observation_radius + 1):
                 nx, ny = self.x + dx, self.y + dy
                 if 0 <= nx < grid.shape[0] and 0 <= ny < grid.shape[1]:
                     cell_value = grid[nx, ny]
@@ -164,19 +167,23 @@ class LLMAgent:
                     row.append("X")  # 경계 밖
             neighborhood_grid.append(row)
 
+        grid_size = observation_radius * 2 + 1
         return {
             "neighbors": neighbors,
             "grid": neighborhood_grid,
-            "total_neighbors": neighbors["A"] + neighbors["B"]
+            "total_neighbors": neighbors["A"] + neighbors["B"],
+            "grid_size": f"{grid_size}x{grid_size}",
+            "observation_radius": observation_radius
         }
 
-    def decide_satisfaction_simple(self, grid: np.ndarray, threshold: float) -> bool:
+    def decide_satisfaction_simple(self, grid: np.ndarray, threshold: float, observation_radius: int = 2) -> bool:
         """
         단순 LLM 행위자의 만족도 판단
 
         Args:
             grid: 현재 격자 상태
             threshold: 만족 임계값
+            observation_radius: 관찰 반경
 
         Returns:
             bool: 만족 여부
@@ -184,7 +191,7 @@ class LLMAgent:
         if not client:
             return self._fallback_satisfaction(grid, threshold)
 
-        neighborhood_info = self.get_neighborhood_info(grid)
+        neighborhood_info = self.get_neighborhood_info(grid, observation_radius)
         grid_str = "\n".join(["".join(row) for row in neighborhood_info["grid"]])
 
         # 현재 비율 계산
@@ -196,7 +203,7 @@ class LLMAgent:
         prompt = f"""
         당신은 유형 {self.type_name}의 행위자입니다. 현재 위치는 격자의 중앙입니다.
 
-        다음은 당신 주변의 5x5 격자 상황입니다:
+        다음은 당신 주변의 {neighborhood_info["grid_size"]} 격자 상황입니다:
         {grid_str}
 
         기호 설명:
@@ -248,13 +255,14 @@ class LLMAgent:
             print(f"API 호출 오류: {e}")
             return self._fallback_satisfaction(grid, threshold)
 
-    def decide_satisfaction_group(self, grid: np.ndarray, threshold: float) -> bool:
+    def decide_satisfaction_group(self, grid: np.ndarray, threshold: float, observation_radius: int = 2) -> bool:
         """
         집단 LLM 행위자의 만족도 판단
 
         Args:
             grid: 현재 격자 상태
             threshold: 만족 임계값
+            observation_radius: 관찰 반경
 
         Returns:
             bool: 만족 여부
@@ -262,7 +270,7 @@ class LLMAgent:
         if not client:
             return self._fallback_satisfaction(grid, threshold)
 
-        neighborhood_info = self.get_neighborhood_info(grid)
+        neighborhood_info = self.get_neighborhood_info(grid, observation_radius)
         grid_str = "\n".join(["".join(row) for row in neighborhood_info["grid"]])
 
         # 집단 특성 설명
@@ -275,31 +283,51 @@ class LLMAgent:
         required_ratio = threshold
 
         prompt = f"""
-        당신은 {self.group_characteristics["name"]}에 속합니다.
+        당신은 거주지 선택에 있어 특정한 사회적 선호를 가진 개인입니다.
 
-        {self.group_characteristics["name"]}의 특성:
+        === 당신의 사회적 배경과 선호 ===
+        집단: {self.group_characteristics["name"]}
+
+        주요 특성:
         {traits_str}
 
-        현재 당신의 거주지 주변 상황:
+        거주지 선호도: {self.group_characteristics["preferences"]}
+
+        === 현재 거주지 상황 분석 ===
+
+        주변 {neighborhood_info["grid_size"]} 지역 현황:
         {grid_str}
 
-        주변 이웃 구성 분석:
+        기호 설명: A = 그룹A 거주자, B = 그룹B 거주자, . = 빈 집, X = 지역 경계
+
+        직접 이웃(8방향) 구성:
         - 같은 그룹 ({self.type_name}): {same_type_count}명
         - 다른 그룹: {neighborhood_info["neighbors"]["A" if self.type_name == "B" else "B"]}명
-        - 빈 공간: {neighborhood_info["neighbors"]["empty"]}개
+        - 빈 집: {neighborhood_info["neighbors"]["empty"]}개
         - 총 이웃 수: {total_neighbors}명
 
-        수학적 계산:
-        1. 현재 같은 그룹 비율: {same_type_count}/{total_neighbors} = {current_ratio:.3f} ({current_ratio:.1%})
-        2. 요구되는 최소 비율: {required_ratio:.3f} ({required_ratio:.1%})
-        3. 기준 충족 여부: {current_ratio:.3f} >= {required_ratio:.3f}? {"예" if current_ratio >= required_ratio else "아니오"}
+        === 거주 만족도 판단 기준 ===
 
-        엄격한 판단 기준:
-        - 당신의 그룹은 정확히 {threshold:.1%} 이상의 같은 그룹 이웃을 요구합니다.
-        - 그룹 특성과 관계없이 이 수치적 기준을 충족하지 못하면 불만족해야 합니다.
-        - 현재 비율이 기준 미달이면 반드시 "불만족"을 선택하세요.
+        쉘링 모형에 따르면, 개인은 자신과 비슷한 특성을 가진 이웃들과 함께 살 때 더 높은 만족감을 느낍니다.
+        이는 편견이나 차별 때문이 아니라, 비슷한 생활 패턴, 가치관, 그리고 사회적 네트워크를 통한
+        자연스러운 상호작용과 안정감 때문입니다.
 
-        위 계산 결과를 바탕으로 "만족" 또는 "불만족"으로 답하고, 간단한 이유를 제시하세요.
+        수치적 분석:
+        - 현재 같은 그룹 비율: {same_type_count}/{total_neighbors} = {current_ratio:.1%}
+        - 개인적 선호 임계값: {required_ratio:.1%}
+        - 기준 충족 여부: {"충족" if current_ratio >= required_ratio else "미충족"}
+
+        === 의사결정 요청 ===
+
+        위의 상황을 종합하여, 당신의 사회적 선호와 현재 이웃 구성을 고려할 때:
+
+        1. 현재 거주지에서 만족하며 계속 살고 싶은가?
+        2. 아니면 더 적합한 지역으로 이주하고 싶은가?
+
+        수치적 기준: 같은 그룹 비율이 {threshold:.1%} 이상이어야 만족
+        현재 상황: {current_ratio:.1%} (기준 {"충족" if current_ratio >= required_ratio else "미충족"})
+
+        "만족" 또는 "불만족"으로 답하고, 당신의 사회적 선호에 기반한 간단한 이유를 설명하세요.
         """
 
         try:
@@ -380,13 +408,14 @@ class LLMSchellingSimulation:
                     agent = LLMAgent(self.grid[x, y], x, y)
                     self.agents[(x, y)] = agent
 
-    def move_unsatisfied_agents(self, threshold: float, agent_type: str = "simple"):
+    def move_unsatisfied_agents(self, threshold: float, agent_type: str = "simple", observation_radius: int = 2):
         """
         불만족한 행위자들을 이동시킵니다.
 
         Args:
             threshold: 만족 임계값
             agent_type: 행위자 유형 ("simple" 또는 "group")
+            observation_radius: 관찰 반경
         """
         unsatisfied_agents = []
         total_agents = len(self.agents)
@@ -404,11 +433,11 @@ class LLMSchellingSimulation:
                 print(f"  진행률: {progress:.0f}% ({processed_agents}/{total_agents})")
 
             if agent_type == "simple":
-                is_satisfied = agent.decide_satisfaction_simple(self.grid, threshold)
+                is_satisfied = agent.decide_satisfaction_simple(self.grid, threshold, observation_radius)
             elif agent_type == "group":
-                is_satisfied = agent.decide_satisfaction_group(self.grid, threshold)
+                is_satisfied = agent.decide_satisfaction_group(self.grid, threshold, observation_radius)
             else:
-                is_satisfied = agent.decide_satisfaction_simple(self.grid, threshold)
+                is_satisfied = agent.decide_satisfaction_simple(self.grid, threshold, observation_radius)
 
             if not is_satisfied:
                 unsatisfied_agents.append((x, y))
@@ -449,7 +478,7 @@ class LLMSchellingSimulation:
             print("모든 행위자가 만족함. 이동 없음.")
 
     def calculate_satisfaction_rate(self, threshold: float, agent_type: str = "simple",
-                                   sample_size: int = None) -> float:
+                                   sample_size: int = None, observation_radius: int = 2) -> float:
         """
         현재 만족도를 계산합니다.
 
@@ -457,6 +486,7 @@ class LLMSchellingSimulation:
             threshold: 만족 임계값
             agent_type: 행위자 유형
             sample_size: 샘플링할 행위자 수 (None이면 전체)
+            observation_radius: 관찰 반경
 
         Returns:
             float: 0-1 사이의 만족도
@@ -479,11 +509,11 @@ class LLMSchellingSimulation:
 
         for i, agent in enumerate(agents_to_check):
             if agent_type == "simple":
-                is_satisfied = agent.decide_satisfaction_simple(self.grid, threshold)
+                is_satisfied = agent.decide_satisfaction_simple(self.grid, threshold, observation_radius)
             elif agent_type == "group":
-                is_satisfied = agent.decide_satisfaction_group(self.grid, threshold)
+                is_satisfied = agent.decide_satisfaction_group(self.grid, threshold, observation_radius)
             else:
-                is_satisfied = agent.decide_satisfaction_simple(self.grid, threshold)
+                is_satisfied = agent.decide_satisfaction_simple(self.grid, threshold, observation_radius)
 
             if is_satisfied:
                 satisfied_count += 1
@@ -495,7 +525,7 @@ class LLMSchellingSimulation:
         return satisfied_count / total_count
 
     def run_simulation(self, steps: int = MAX_STEPS, threshold: float = THRESHOLD_VALUE,
-                      agent_type: str = "simple") -> List[np.ndarray]:
+                      agent_type: str = "simple", observation_radius: int = 2) -> List[np.ndarray]:
         """
         시뮬레이션을 실행합니다.
 
@@ -503,6 +533,7 @@ class LLMSchellingSimulation:
             steps: 최대 단계 수
             threshold: 만족 임계값
             agent_type: 행위자 유형
+            observation_radius: 관찰 반경
 
         Returns:
             List[np.ndarray]: 각 단계별 격자 상태
@@ -512,6 +543,7 @@ class LLMSchellingSimulation:
 
         print(f"=== LLM 쉘링 시뮬레이션 시작 ({agent_type} 모드) ===")
         print(f"격자 크기: {self.width}x{self.height}")
+        print(f"관찰 영역: {observation_radius*2+1}x{observation_radius*2+1}")
         print(f"임계값: {threshold}")
         api_available = bool(client)
         print(f"API 키 상태: {'설정됨' if api_available else '미설정 (fallback 모드)'}")
@@ -524,7 +556,7 @@ class LLMSchellingSimulation:
             print(f"\n--- {step + 1}단계 실행 중 ---")
 
             prev_grid = self.grid.copy()
-            self.move_unsatisfied_agents(threshold, agent_type)
+            self.move_unsatisfied_agents(threshold, agent_type, observation_radius)
             self.frames.append(self.grid.copy())
 
             # 수렴 체크
@@ -535,7 +567,7 @@ class LLMSchellingSimulation:
             # 만족도 계산 (간헐적으로만 수행, 샘플링 사용)
             if step % 3 == 0:  # 더 자주 체크하되 샘플링 사용
                 sample_size = min(50, len(self.agents) // 2)  # 최대 50개 또는 절반
-                satisfaction_rate = self.calculate_satisfaction_rate(threshold, agent_type, sample_size)
+                satisfaction_rate = self.calculate_satisfaction_rate(threshold, agent_type, sample_size, observation_radius)
                 print(f"전체 만족도 (추정): {satisfaction_rate:.3f}")
 
                 if satisfaction_rate >= 0.95:
